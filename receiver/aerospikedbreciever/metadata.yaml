@@ -1,0 +1,19 @@
+name: aerospikedbreciever
+
+resource_attributes:
+  clusterName:
+    description: The name of the aerospike cluster.
+    type: string
+  nodeName:
+    description: The name of the aerospike node.
+    type: string
+
+metrics:
+  client_read_success:
+    enabled: true
+    description: Successful client read transactions.
+    unit: "{TPS}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation: cumulative
