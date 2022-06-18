@@ -17,3 +17,11 @@ metrics:
       value_type: int
       monotonic: true
       aggregation: cumulative
+  client_write_success:
+    enabled: true
+    description: Successful client write transactions.
+    unit: "{TPS}"
+    sum:
+      value_type: int
+      monotonic: true
+      aggregation: cumulative

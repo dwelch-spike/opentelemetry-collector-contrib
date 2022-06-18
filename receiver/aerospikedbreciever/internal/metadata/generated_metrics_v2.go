@@ -17,12 +17,16 @@ type MetricSettings struct {
 
 // MetricsSettings provides settings for aerospikedbreciever metrics.
 type MetricsSettings struct {
-	ClientReadSuccess MetricSettings `mapstructure:"client_read_success"`
+	ClientReadSuccess  MetricSettings `mapstructure:"client_read_success"`
+	ClientWriteSuccess MetricSettings `mapstructure:"client_write_success"`
 }
 
 func DefaultMetricsSettings() MetricsSettings {
 	return MetricsSettings{
 		ClientReadSuccess: MetricSettings{
+			Enabled: true,
+		},
+		ClientWriteSuccess: MetricSettings{
 			Enabled: true,
 		},
 	}
@@ -79,15 +83,67 @@ func newMetricClientReadSuccess(settings MetricSettings) metricClientReadSuccess
 	return m
 }
 
+type metricClientWriteSuccess struct {
+	data     pmetric.Metric // data buffer for generated metric.
+	settings MetricSettings // metric settings provided by user.
+	capacity int            // max observed number of data points added to the metric.
+}
+
+// init fills client_write_success metric with initial data.
+func (m *metricClientWriteSuccess) init() {
+	m.data.SetName("client_write_success")
+	m.data.SetDescription("Successful client write transactions.")
+	m.data.SetUnit("{TPS}")
+	m.data.SetDataType(pmetric.MetricDataTypeSum)
+	m.data.Sum().SetIsMonotonic(true)
+	m.data.Sum().SetAggregationTemporality(pmetric.MetricAggregationTemporalityCumulative)
+}
+
+func (m *metricClientWriteSuccess) recordDataPoint(start pcommon.Timestamp, ts pcommon.Timestamp, val int64) {
+	if !m.settings.Enabled {
+		return
+	}
+	dp := m.data.Sum().DataPoints().AppendEmpty()
+	dp.SetStartTimestamp(start)
+	dp.SetTimestamp(ts)
+	dp.SetIntVal(val)
+}
+
+// updateCapacity saves max length of data point slices that will be used for the slice capacity.
+func (m *metricClientWriteSuccess) updateCapacity() {
+	if m.data.Sum().DataPoints().Len() > m.capacity {
+		m.capacity = m.data.Sum().DataPoints().Len()
+	}
+}
+
+// emit appends recorded metric data to a metrics slice and prepares it for recording another set of data points.
+func (m *metricClientWriteSuccess) emit(metrics pmetric.MetricSlice) {
+	if m.settings.Enabled && m.data.Sum().DataPoints().Len() > 0 {
+		m.updateCapacity()
+		m.data.MoveTo(metrics.AppendEmpty())
+		m.init()
+	}
+}
+
+func newMetricClientWriteSuccess(settings MetricSettings) metricClientWriteSuccess {
+	m := metricClientWriteSuccess{settings: settings}
+	if settings.Enabled {
+		m.data = pmetric.NewMetric()
+		m.init()
+	}
+	return m
+}
+
 // MetricsBuilder provides an interface for scrapers to report metrics while taking care of all the transformations
 // required to produce metric representation defined in metadata and user settings.
 type MetricsBuilder struct {
-	startTime               pcommon.Timestamp   // start time that will be applied to all recorded data points.
-	metricsCapacity         int                 // maximum observed number of metrics per resource.
-	resourceCapacity        int                 // maximum observed number of resource attributes.
-	metricsBuffer           pmetric.Metrics     // accumulates metrics data before emitting.
-	buildInfo               component.BuildInfo // contains version information
-	metricClientReadSuccess metricClientReadSuccess
+	startTime                pcommon.Timestamp   // start time that will be applied to all recorded data points.
+	metricsCapacity          int                 // maximum observed number of metrics per resource.
+	resourceCapacity         int                 // maximum observed number of resource attributes.
+	metricsBuffer            pmetric.Metrics     // accumulates metrics data before emitting.
+	buildInfo                component.BuildInfo // contains version information
+	metricClientReadSuccess  metricClientReadSuccess
+	metricClientWriteSuccess metricClientWriteSuccess
 }
 
 // metricBuilderOption applies changes to default metrics builder.
@@ -102,10 +158,11 @@ func WithStartTime(startTime pcommon.Timestamp) metricBuilderOption {
 
 func NewMetricsBuilder(settings MetricsSettings, buildInfo component.BuildInfo, options ...metricBuilderOption) *MetricsBuilder {
 	mb := &MetricsBuilder{
-		startTime:               pcommon.NewTimestampFromTime(time.Now()),
-		metricsBuffer:           pmetric.NewMetrics(),
-		buildInfo:               buildInfo,
-		metricClientReadSuccess: newMetricClientReadSuccess(settings.ClientReadSuccess),
+		startTime:                pcommon.NewTimestampFromTime(time.Now()),
+		metricsBuffer:            pmetric.NewMetrics(),
+		buildInfo:                buildInfo,
+		metricClientReadSuccess:  newMetricClientReadSuccess(settings.ClientReadSuccess),
+		metricClientWriteSuccess: newMetricClientWriteSuccess(settings.ClientWriteSuccess),
 	}
 	for _, op := range options {
 		op(mb)
@@ -173,6 +230,7 @@ func (mb *MetricsBuilder) EmitForResource(rmo ...ResourceMetricsOption) {
 	ils.Scope().SetVersion(mb.buildInfo.Version)
 	ils.Metrics().EnsureCapacity(mb.metricsCapacity)
 	mb.metricClientReadSuccess.emit(ils.Metrics())
+	mb.metricClientWriteSuccess.emit(ils.Metrics())
 	for _, op := range rmo {
 		op(rm)
 	}
@@ -195,6 +253,11 @@ func (mb *MetricsBuilder) Emit(rmo ...ResourceMetricsOption) pmetric.Metrics {
 // RecordClientReadSuccessDataPoint adds a data point to client_read_success metric.
 func (mb *MetricsBuilder) RecordClientReadSuccessDataPoint(ts pcommon.Timestamp, val int64) {
 	mb.metricClientReadSuccess.recordDataPoint(mb.startTime, ts, val)
+}
+
+// RecordClientWriteSuccessDataPoint adds a data point to client_write_success metric.
+func (mb *MetricsBuilder) RecordClientWriteSuccessDataPoint(ts pcommon.Timestamp, val int64) {
+	mb.metricClientWriteSuccess.recordDataPoint(mb.startTime, ts, val)
 }
 
 // Reset resets metrics builder to its initial state. It should be used when external metrics source is restarted,
