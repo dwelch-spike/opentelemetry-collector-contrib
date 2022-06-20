@@ -1,0 +1,12 @@
+exporters:
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter v0.53.0"
+  - import: go.opentelemetry.io/collector/exporter/loggingexporter
+    gomod: go.opentelemetry.io/collector v0.53.0
+
+receivers:
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/aerospikedbreciever v0.0.0"
+    path: "/Users/dylanwelch/Desktop/everything/projects/open_telemetry/opentelemetry-collector-contrib/receiver/aerospikedbreciever"
+
+processors:
+  - import: go.opentelemetry.io/collector/processor/batchprocessor
+    gomod: go.opentelemetry.io/collector v0.53.0
