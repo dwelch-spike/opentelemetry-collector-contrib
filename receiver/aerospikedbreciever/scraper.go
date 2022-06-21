@@ -27,10 +27,11 @@ import (
 )
 
 type aerospikedbScraper struct {
-	cfg            *Config
-	client         *client
-	mb             *metadata.MetricsBuilder
-	createSettings *component.ReceiverCreateSettings
+	cfg              *Config
+	client           *client
+	mb               *metadata.MetricsBuilder
+	createSettings   *component.ReceiverCreateSettings
+	metricProcessors []metricProcessor
 }
 
 func newAerospikedbScraper(cfg *Config, createSettings *component.ReceiverCreateSettings) *aerospikedbScraper {
@@ -45,28 +46,33 @@ func (a *aerospikedbScraper) start(_ context.Context, _ component.Host) error {
 	fmt.Println("here0")
 	var err error
 	a.client, err = newClient(&a.cfg.clientConfig, a.createSettings.Logger)
+
+	a.metricProcessors = []metricProcessor{
+		newNamespaceMetrics(a.mb, a.client),
+	}
+
 	return err
 }
 
 func (a *aerospikedbScraper) scrape(_ context.Context) (pmetric.Metrics, error) {
 	fmt.Println("here1")
-	var metrics map[string]string
 
-	metricNames := make([]string, len(metrics))
+	// TODO make this a go func, use a channel or set the metrics in the mp
+	for _, mp := range a.metricProcessors {
+		results, err := mp.request()
+		if err != nil {
+			return pmetric.NewMetrics(), err
+		}
 
-	i := 0
-	for _, name := range metrics {
-		metricNames[i] = name
-		i++
+		now := pcommon.NewTimestampFromTime(time.Now())
+		err = mp.record(now, results)
+		if err != nil {
+			return pmetric.NewMetrics(), err
+		}
 	}
 
-	metrics, err := a.client.requestMetricsInfo(metricNames...)
-	if err != nil {
-		return pmetric.NewMetrics(), err
-	}
-
-	now := pcommon.NewTimestampFromTime(time.Now())
-	a.recordMetrics(now, metrics)
+	// now := pcommon.NewTimestampFromTime(time.Now())
+	// a.recordMetrics(now, metrics)
 
 	return a.mb.Emit(), nil
 }

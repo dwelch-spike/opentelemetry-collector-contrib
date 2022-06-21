@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	aero "github.com/aerospike/aerospike-client-go/v5"
 	"go.opentelemetry.io/collector/config/confignet"
@@ -45,6 +46,8 @@ func newClient(cfg *clientConfig, logger *zap.Logger) (*client, error) {
 	clientPolicy := aero.NewClientPolicy()
 	clientPolicy.User = cfg.Username
 	clientPolicy.Password = cfg.Password
+	// TODO timeout config
+	clientPolicy.Timeout = time.Duration(5) * time.Second
 
 	hostIPAndPort := strings.SplitN(cfg.Host.Endpoint, ":", 2)
 	hostIP := hostIPAndPort[0]
@@ -58,6 +61,9 @@ func newClient(cfg *clientConfig, logger *zap.Logger) (*client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("new client with policy failed with: %w", err)
 	}
+
+	var deadline time.Time
+	conn.SetTimeout(deadline, clientPolicy.Timeout)
 
 	res = &client{
 		logger:     logger,

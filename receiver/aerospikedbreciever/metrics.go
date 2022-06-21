@@ -15,54 +15,105 @@
 package aerospikedbreciever // import "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/aerospikedbreciever"
 
 import (
-	"fmt"
-
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/aerospikedbreciever/internal/metadata"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
-type metricType int
+type metricName = string
 
-const (
-	client_read_success metricType = iota
-)
-
-var metricTypes = map[metricType]string{
-	client_read_success: "client_read_success",
-}
+type metricFuncMap map[metricName]interface{}
 
 type metricProcessor interface {
 	request() (map[string]string, error)
-	process(metrics map[string]string) (map[string]string, error)
-	record()
+	// process(metrics map[string]string) (map[string]string, error)
+	record(now pcommon.Timestamp, metrics map[string]string) error
 }
 
 type metricGroup struct {
-	client      *client
-	metrics     map[metricType]string
-	metricNames []string
-	delimeter   string
+	client          *client
+	metricFunctions metricFuncMap
+	metricNames     []metricName
+	delimeter       string
 }
 
-type namespaceMetrics metricGroup
+// TODO devise a way to gather namespace names, then create namespace queries from them
+// will prbably need a namespace label
 
-func (m namespaceMetrics) request() (map[string]string, error) {
-	metrics, err := m.client.requestMetricsInfo(m.metricNames...)
+func (m metricGroup) request() (map[string]string, error) {
+	queries := []string{
+		"namespace/test",
+	}
+
+	metrics, err := m.client.requestMetricsInfo(queries...)
 	if err != nil {
 		return nil, err
 	}
 
+	m.client.logger.Sugar().Infof("metricGroup.request got: %+v", metrics)
+
 	return metrics, nil
 }
 
-func (a *aerospikedbScraper) recordMetrics(now pcommon.Timestamp, metrics map[string]string) {
-	fmt.Printf("%+v", metrics)
-	a.mb.RecordClientReadSuccessDataPoint(now, metrics[metricTypes[client_read_success]])
+// func (m metricGroup) process(metrics map[string]string) (map[string]string, error) {
+// 	for _, v := range metrics {
+// 		v := sanitizeUTF8(v)
+// 		tmp := parseStats(v, m.delimeter)
+// 	}
+
+// }
+
+type namespaceMetrics struct {
+	metricGroup
 }
 
-func processMetricsMap(metrics map[string]string) {
-	for k, v := range metrics {
-		metrics[k] = sanitizeUTF8(v)
-		parseStats(v)
+func newNamespaceMetrics(m *metadata.MetricsBuilder, c *client) *namespaceMetrics {
+	metricFunctions := metricFuncMap{
+		"client_read_success":  m.RecordClientReadSuccessDataPoint,
+		"client_write_success": m.RecordClientWriteSuccessDataPoint,
 	}
 
+	metricNames := make([]metricName, len(metricFunctions))
+	// NOTE: this means the order of metric names will be random each time
+	i := 0
+	for name := range metricFunctions {
+		metricNames[i] = name
+		i++
+	}
+
+	return &namespaceMetrics{
+		metricGroup{
+			client:          c,
+			metricFunctions: metricFunctions,
+			metricNames:     metricNames,
+			delimeter:       ";",
+		},
+	}
+}
+
+func (m namespaceMetrics) record(now pcommon.Timestamp, metrics map[string]string) error {
+	m.client.logger.Sugar().Infof("record called with metrics: %+v", metrics)
+
+	for _, stats := range metrics {
+		statsMap := parseStats(stats, m.delimeter)
+
+		for name, recorder := range m.metricFunctions {
+			switch record := recorder.(type) {
+			case func(pcommon.Timestamp, int64):
+				mString := statsMap[name]
+
+				statsMap[name] = sanitizeUTF8(mString)
+
+				val, err := tryConvert(mString)
+				if err != nil {
+					return err
+				}
+
+				record(now, int64(val))
+			default:
+				panic("unkown recorder type, shouldn't be here")
+			}
+		}
+	}
+
+	return nil
 }
