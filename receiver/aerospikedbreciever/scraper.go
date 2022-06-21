@@ -16,6 +16,7 @@ package aerospikedbreciever // import "github.com/open-telemetry/opentelemetry-c
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"go.opentelemetry.io/collector/component"
@@ -41,12 +42,14 @@ func newAerospikedbScraper(cfg *Config, createSettings *component.ReceiverCreate
 }
 
 func (a *aerospikedbScraper) start(_ context.Context, _ component.Host) error {
+	fmt.Println("here0")
 	var err error
 	a.client, err = newClient(&a.cfg.clientConfig, a.createSettings.Logger)
 	return err
 }
 
 func (a *aerospikedbScraper) scrape(_ context.Context) (pmetric.Metrics, error) {
+	fmt.Println("here1")
 	var metrics map[string]string
 
 	metricNames := make([]string, len(metrics))

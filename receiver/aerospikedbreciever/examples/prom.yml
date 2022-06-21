@@ -1,0 +1,25 @@
+receivers:
+  aerospike:
+    hosts:
+      endpoint: "127.0.0.1:3000"
+
+processors:
+  batch:
+
+exporters:
+  prometheus:
+    endpoint: "localhost:9145"
+    # const_labels:
+    #   label1: value1
+    #   "another label": spaced value
+    send_timestamps: true
+    metric_expiration: 5m
+    resource_to_telemetry_conversion:
+      enabled: true
+
+service:
+  pipelines:
+    metrics:
+      receivers: [aerospike]
+      processors: [batch]
+      exporters: [prometheus]

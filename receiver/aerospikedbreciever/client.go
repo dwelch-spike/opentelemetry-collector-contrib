@@ -71,11 +71,13 @@ func newClient(cfg *clientConfig, logger *zap.Logger) (*client, error) {
 func (c client) requestMetricsInfo(mType ...string) (map[string]string, error) {
 	var err error
 	var metrics map[string]string
+	fmt.Println("here9")
 
 	if c.connection == nil {
 		return metrics, errors.New("client connection is nil")
 	}
 
+	c.logger.Sugar().Infof("requesting metrics, mType: %+v", mType)
 	metrics, err = c.connection.RequestInfo(mType...)
 	if err != nil {
 		return metrics, err

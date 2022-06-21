@@ -1,0 +1,16 @@
+receivers:
+  aerospike:
+    hosts: "127.0.0.1:3000"
+
+processors:
+  nop:
+
+exporters:
+  nop:
+
+service:
+  pipelines:
+    metrics:
+      receivers: [aerospike]
+      processors: [nop]
+      exporters: [nop]

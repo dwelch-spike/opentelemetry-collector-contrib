@@ -20,37 +20,49 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
-// type metricType int
+type metricType int
 
-// const (
-// 	client_read_success metricType = iota
-// )
+const (
+	client_read_success metricType = iota
+)
 
-// var metricTypes = map[metricType]string{
-// 	client_read_success: "client_read_success",
-// }
+var metricTypes = map[metricType]string{
+	client_read_success: "client_read_success",
+}
+
+type metricProcessor interface {
+	request() (map[string]string, error)
+	process(metrics map[string]string) (map[string]string, error)
+	record()
+}
+
+type metricGroup struct {
+	client      *client
+	metrics     map[metricType]string
+	metricNames []string
+	delimeter   string
+}
+
+type namespaceMetrics metricGroup
+
+func (m namespaceMetrics) request() (map[string]string, error) {
+	metrics, err := m.client.requestMetricsInfo(m.metricNames...)
+	if err != nil {
+		return nil, err
+	}
+
+	return metrics, nil
+}
 
 func (a *aerospikedbScraper) recordMetrics(now pcommon.Timestamp, metrics map[string]string) {
 	fmt.Printf("%+v", metrics)
-	// a.mb.RecordClientReadSuccessDataPoint(now, metrics[metrics[client_read_success]])
+	a.mb.RecordClientReadSuccessDataPoint(now, metrics[metricTypes[client_read_success]])
 }
 
-// func processMetricsMap(metrics map[string]string) {
-// 	for k, v := range metrics {
-// 		metrics[k] = sanitizeUTF8(v)
-// 	}
-// }
+func processMetricsMap(metrics map[string]string) {
+	for k, v := range metrics {
+		metrics[k] = sanitizeUTF8(v)
+		parseStats(v)
+	}
 
-// func sanitizeUTF8(lv string) string {
-// 	if utf8.ValidString(lv) {
-// 		return lv
-// 	}
-// 	fixUtf := func(r rune) rune {
-// 		if r == utf8.RuneError {
-// 			return 65533
-// 		}
-// 		return r
-// 	}
-
-// 	return strings.Map(fixUtf, lv)
-// }
+}
