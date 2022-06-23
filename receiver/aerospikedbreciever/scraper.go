@@ -74,5 +74,6 @@ func (a *aerospikedbScraper) scrape(_ context.Context) (pmetric.Metrics, error) 
 	// now := pcommon.NewTimestampFromTime(time.Now())
 	// a.recordMetrics(now, metrics)
 
-	return a.mb.Emit(), nil
+	// TODO maybe use getNodeName from the connection instead?
+	return a.mb.Emit(metadata.WithNodeName(a.cfg.Host.Endpoint)), nil
 }
